@@ -1,0 +1,13 @@
+Order deny,allow
+Deny from all
+
+# Allow localhost
+Allow from 127.0.0.1
+
+AuthUserFile /var/www/htpasswd
+AuthName "fejlvarp"
+AuthType Basic
+Require valid-user
+
+Satisfy any
+

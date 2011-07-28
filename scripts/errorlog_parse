@@ -1,0 +1,171 @@
+#!/usr/bin/php
+<?php
+/**
+ * Errorlog praser that looks for PHP fatal errors and reports them to a fejlvarp service.
+ * Install as a cronjob to run frequently.
+ *
+ * USAGE:
+ *   ./errorlog_parse [PATH, [...]]
+ * You can give various optional ENV parameters:
+ *   STATE_FILE    Where to track which files have been parsed previously - Defaults to .errorlog_parse_journal
+ *   DEBUG         If set, errors will be printed to console, rather than reported to fejlvarp service
+ *   DESTINATION   If set, should contain the URI of the fejlvarp service endpoint. Ignored if DEBUG is set.
+ */
+
+function tokenize_line($line) {
+  $tags = array();
+  while (preg_match('/\[([^\]]*)\] (.*)$/', $line, $reg)) {
+    $tags[] = $reg[1];
+    $line = $reg[2];
+  }
+  return array('tags' => $tags, 'text' => $line);
+}
+
+class Parser {
+  protected $logger;
+  protected $state = 0;
+  protected $error = null;
+  protected $trace = array();
+  protected $timestamp = 0;
+  function __construct($logger) {
+    $this->logger = $logger;
+  }
+  function accept($token) {
+    if ($token['text'] == 'PHP Stack trace:') {
+      $this->state = 2;
+    } elseif ($this->state == 2) {
+      if (preg_match('/^PHP   ([0-9]+\. .*)$/', $token['text'], $reg)) {
+        $this->trace[] = $reg[1];
+      } else {
+        $this->flush();
+      }
+    }
+    if (preg_match('/^PHP (Fatal|Parse) error:/', $token['text'])) {
+      $this->flush();
+      $this->state = 1;
+      $this->error = $token['text'];
+      $this->timestamp = strtotime($token['tags'][0]);
+    }
+  }
+  function flush() {
+    if ($this->state != 0) {
+      $this->logger->onError($this->error, $this->trace, $this->timestamp);
+      $this->trace = array();
+      $this->state = 0;
+      $this->error = null;
+      $this->timestamp = 0;
+    }
+  }
+}
+
+class TimeAwareLogger {
+  protected $logger = null;
+  protected $from = 0;
+  protected $to = 0;
+  function __construct($from, $to, $logger) {
+    $this->from = $from;
+    $this->to = $to;
+    $this->logger = $logger;
+  }
+  function onError($error, $trace, $timestamp) {
+    if (($timestamp > $this->from) && ($timestamp <= $this->to)) {
+      $this->logger->onError($error, $trace, $timestamp);
+    }
+  }
+}
+
+class FejlvarpLogger {
+  protected $destination;
+  function __construct($destination) {
+    $this->destination = $destination;
+  }
+  function onError($error, $trace, $timestamp) {
+    $hash = preg_replace(
+      '~revisions/[0-9]{14}/~',
+      '--',
+      preg_replace(
+        '/, referer: .*$/',
+        '',
+        $error)).implode("-", $trace);
+    $opts = array(
+      'http' => array(
+        'method' => "POST",
+        'header' => "Content-type: application/x-www-form-urlencoded\r\n",
+        'content' => http_build_query(
+          array(
+            'hash' => md5($hash),
+            'subject' => $error,
+            'data' => json_encode(
+              array(
+                'error' => array('message' => $error, 'trace' => $trace)))))));
+    $context = stream_context_create($opts);
+    file_get_contents($this->destination, false, $context);
+  }
+}
+
+class DebugLogger {
+  function onError($error, $trace, $timestamp) {
+    var_dump(
+      json_encode(
+        array(
+          'error' => array('message' => $error, 'trace' => $trace))));
+  }
+}
+
+$paths = array_slice($argv, 1);
+if (empty($paths)) {
+  $paths = array("/var/log/apache2/");
+}
+foreach ($paths as $path) {
+  if (!is_readable($path)) {
+    throw new Exception("$path isn't readable");
+  }
+}
+$state_file = isset($_SERVER['STATE_FILE']) ? $_SERVER['STATE_FILE'] : '.errorlog_parse_journal';
+if (is_file($state_file)) {
+  $from = (int) file_get_contents($state_file);
+} else {
+  touch($state_file);
+  chmod($state_file, 0666);
+  $from = 0;
+}
+if (!is_writable($state_file)) {
+  throw new Exception("$state_file isn't writable");
+}
+$to = time();
+if (isset($_SERVER['DEBUG']) && $_SERVER['DEBUG']) {
+  $destination = new DebugLogger();
+} else {
+  if (!isset($_SERVER['DESTINATION'])) {
+    throw new Exception("DESTINATION missing");
+  }
+  $destination = new FejlvarpLogger($_SERVER['DESTINATION']);
+}
+$logger = new TimeAwareLogger($from, $to, $destination);
+$p = new Parser($logger);
+foreach ($paths as $path) {
+  if (is_dir($path)) {
+    $path = rtrim($path, '/').'/';
+    foreach (scandir($path) as $file_name) {
+      $file_name = $path . $file_name;
+      if (is_file($file_name) && is_readable($file_name)) {
+        if (!preg_match('/[.]gz$/', $file_name)) {
+          echo "Parsing file $file_name\n";
+          $input = new SplFileObject($file_name);
+          foreach ($input as $line) {
+            $p->accept(tokenize_line($line));
+          }
+          $p->flush();
+        }
+      }
+    }
+  } else {
+    echo "Parsing file $path\n";
+    $input = new SplFileObject($path);
+    foreach ($input as $line) {
+      $p->accept(tokenize_line($line));
+    }
+    $p->flush();
+  }
+}
+file_put_contents($state_file, $to);
