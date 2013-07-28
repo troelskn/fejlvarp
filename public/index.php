@@ -82,7 +82,7 @@ function fejlvarp_notify($notification, $row) {
   $title = "[$notification] " . $row['subject'];
   $msg = var_export($row, true);
   $uri = $server_name . '?hash='.rawurlencode($row['hash']);
-  foreach (array('notify_mail', 'notify_notifo') as $fn) {
+  foreach (array('notify_mail', 'notify_pushover') as $fn) {
     $fn($title, $msg, $uri);
   }
 }
@@ -94,19 +94,24 @@ function notify_mail($title, $msg, $uri) {
   }
 }
 
-function notify_notifo($title, $msg, $uri) {
-  global $notifo_username, $notifo_apisecret;
-  if (isset($notifo_username) && $notifo_username) {
-    $opts = array(
-      'http' => array(
-        'method' => "POST",
-        'header' => "Authorization: Basic ".base64_encode($notifo_username.":".$notifo_apisecret)."\r\n".
-        "Content-type: application/x-www-form-urlencoded\r\n",
-        'content' => http_build_query(array('title' => $title, 'msg' => $msg, 'uri' => $uri))
-      )
-    );
-    $context = stream_context_create($opts);
-    file_get_contents('https://api.notifo.com/v1/send_notification', false, $context);
+function notify_pushover($title, $msg, $uri) {
+  // https://pushover.net/api
+  global $pushover_userkey, $pushover_apitoken;
+  if (isset($pushover_apitoken) && $pushover_apitoken) {
+    $curl = curl_init();
+    curl_setopt($curl, CURLOPT_URL, 'https://api.pushover.net/1/messages.json');
+    curl_setopt($curl, CURLOPT_HEADER, false);
+    curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($curl, CURLOPT_POSTFIELDS, array(
+      'token' => $pushover_apitoken,
+      'user' => $pushover_userkey,
+      'title' => $title,
+      'message' => $msg,
+      'url' => $uri,
+      'url_title' => 'See incident'
+    ));
+    curl_exec($curl);
   }
 }
 
