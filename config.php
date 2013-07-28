@@ -10,6 +10,6 @@ $server_name = "http://localhost/fejlvarp";
 // Specify mail address to mail when a new incident occurs
 $mail_recipient = null;
 
-// Specify notifo details to notiy when a new incident occurs
-$notifo_username = null;
-$notifo_apisecret = null;
+// Specify pushover details to notiy when a new incident occurs
+$pushover_userkey = null;
+$pushover_apitoken = null;
