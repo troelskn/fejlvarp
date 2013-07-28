@@ -5,7 +5,7 @@ Fejlvarp is an incident logger, primarily for PHP based systems.
 
 It provides you with a place to log runtime errors that happen in production. It includes a utility to watch apache error logs for PHP fatal errors and report these to the Fejlvarp service.
 
-The service can notify when an incident first happens or is reopened via mail or through notifo.
+The service can notify when an incident first happens or is reopened via mail or through pushover.net.
 
 It offers a web based interface to see debug info about the incident.
 
