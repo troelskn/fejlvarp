@@ -82,7 +82,7 @@ function fejlvarp_notify($notification, $row) {
   $title = "[$notification] " . $row['subject'];
   $msg = var_export($row, true);
   $uri = $server_name . '?hash='.rawurlencode($row['hash']);
-  foreach (array('notify_mail', 'notify_pushover') as $fn) {
+  foreach (array('notify_mail', 'notify_pushover', 'notify_slack') as $fn) {
     $fn($title, $msg, $uri);
   }
 }
@@ -110,6 +110,21 @@ function notify_pushover($title, $msg, $uri) {
       'message' => $msg,
       'url' => $uri,
       'url_title' => 'See incident'
+    ));
+    curl_exec($curl);
+  }
+}
+
+function notify_slack($title, $msg, $uri) {
+  global $slack_webhook_url;
+  if (isset($slack_webhook_url) && $slack_webhook_url) {
+    $curl = curl_init();
+    curl_setopt($curl, CURLOPT_URL, $slack_webhook_url);
+    curl_setopt($curl, CURLOPT_HEADER, false);
+    curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($curl, CURLOPT_POSTFIELDS, array(
+      'payload' => json_encode(array('text' => $title . ' <' . $uri . '|See more>'))
     ));
     curl_exec($curl);
   }
