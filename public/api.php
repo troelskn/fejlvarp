@@ -7,7 +7,7 @@ if (!in_array($action, array('geoip', 'useragent'))) {
 if ($action == "geoip") {
   $ip = $_GET['ip'];
   $parts = explode(",", $_GET['ip']);
-  $url = "http://freegeoip.net/json/" . rawurlencode($parts[0]);
+  $url = 'http://api.ipstack.com/' . rawurlencode($parts[0]) . '?access_key=' . $ipstack_access_key;
   $json = file_get_contents($url);
   $data = json_decode($json, true);
   $response = array(
