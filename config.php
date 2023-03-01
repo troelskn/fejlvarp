@@ -16,3 +16,6 @@ $pushover_apitoken = null;
 
 // Specify slack.com webhook to notiy when a new incident occurs
 $slack_webhook_url = null;
+
+// Specify access key to ipstach (sign up free at https://ipstack.com/signup/free 100requests/month)
+$ipstack_access_key = null;
